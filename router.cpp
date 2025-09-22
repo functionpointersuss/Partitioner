@@ -7,19 +7,21 @@ router::router(int32_t num_fpgas, std::vector<std::vector<int32_t>> fpga_graph,
 
 // Calculates route effort
 void router::route() {
-  //-----------------------
-  // Maximum FPGA Hop Count
-  //-----------------------
-  int32_t max_hop_count = 0;
+
+  // -------------------------
+  // FPGA Graph Floyd Warshall
+  // -------------------------
+  int32_t fpga_path_lengths[num_fpgas][num_fpgas];
   int32_t fpga_hop_counts[num_fpgas][num_fpgas];
-
-  // Initialize fpga_hop_counts from the graph
-  for (int32_t row = 0; row < num_fpgas; row++)
-    for (int32_t col = 0; col < num_fpgas; col++)
+  // Initialize fpga_path_lengths and fpga_hop_counts from the graph
+  for (int32_t row = 0; row < num_fpgas; row++) {
+    for (int32_t col = 0; col < num_fpgas; col++) {
+      fpga_path_lengths[row][col] = fpga_graph[row][col];
       fpga_hop_counts[row][col] = (fpga_graph[row][col] > 0) ? 1 : fpga_graph[row][col];
+    }
+  }
 
-  // Run Floyd Warshall on the graph to get all the paths
-  // TODO: Can be implemented with BFS
+  // Build a LUT of distances and hop counts to calculate path lengths later
   for (int32_t i = 0; i < num_fpgas; i++) {
     for (int32_t j = 0; j < num_fpgas; j++) {
       for (int32_t k = 0; k < num_fpgas; k++) {
@@ -30,30 +32,6 @@ void router::route() {
           else
             fpga_hop_counts[i][j] = std::min(fpga_hop_counts[i][j], fpga_hop_counts[i][k] + fpga_hop_counts[k][j]);
         }
-      }
-    }
-  }
-
-  // Get the maximum distance in this graph
-  for (int32_t row = 0; row < num_fpgas; row++)
-    for (int32_t col = 0; col < num_fpgas; col++)
-      max_hop_count = std::max(max_hop_count, fpga_hop_counts[row][col]);
-
-
-  // -------------------------
-  // FPGA Graph Floyd Warshall
-  // -------------------------
-  int32_t fpga_path_lengths[num_fpgas][num_fpgas];
-  // Initialize fpga_path_lengths from the graph
-  for (int32_t row = 0; row < num_fpgas; row++)
-    for (int32_t col = 0; col < num_fpgas; col++)
-      fpga_path_lengths[row][col] = fpga_graph[row][col];
-
-  // Build a LUT of distances to calculate path lengths later
-  for (int32_t i = 0; i < num_fpgas; i++) {
-    for (int32_t j = 0; j < num_fpgas; j++) {
-      for (int32_t k = 0; k < num_fpgas; k++) {
-        // Disconnected edges are represented by -1
         if (fpga_path_lengths[i][k] != -1 && fpga_path_lengths[k][j] != -1) {
           if (fpga_path_lengths[i][j] == -1)
             fpga_path_lengths[i][j] = fpga_path_lengths[i][k] + fpga_path_lengths[k][j];
@@ -64,33 +42,36 @@ void router::route() {
     }
   }
 
+  // Get the maximum hop count in this graph
+  int32_t max_hop_count = 0;
+  for (int32_t row = 0; row < num_fpgas; row++)
+    for (int32_t col = 0; col < num_fpgas; col++)
+      max_hop_count = std::max(max_hop_count, fpga_hop_counts[row][col]);
+
+
   // --------------------
   // Edge list processing
   // --------------------
 
   std::vector<edge_path_t> edge_paths;
-  int32_t edge_path_length;
   int32_t max_edge_path_length = 0;
-  mt_kahypar_partition_id_t source_part;
-  mt_kahypar_partition_id_t drain_part;
-  mt_kahypar_hypernode_id_t num_nodes_in_edge;
   // Run through all edges to get path lengths and max page length
   for (int32_t edge = 0; edge < mt_kahypar_num_hyperedges(hypergraph); edge++) {
     // Get source partition (we will say the 0th hypernode for now)
-    num_nodes_in_edge = mt_kahypar_hyperedge_size(hypergraph, edge);
+    mt_kahypar_hypernode_id_t num_nodes_in_edge = mt_kahypar_hyperedge_size(hypergraph, edge);
     mt_kahypar_hypernode_id_t *pin_buffer = (mt_kahypar_hypernode_id_t*) malloc(sizeof(mt_kahypar_hypernode_id_t)*num_nodes_in_edge);
     mt_kahypar_get_hyperedge_pins(hypergraph, edge, pin_buffer);
-    source_part = mt_kahypar_block_id(partitioned_hypergraph, pin_buffer[0]);
+    mt_kahypar_partition_id_t source_part = mt_kahypar_block_id(partitioned_hypergraph, pin_buffer[0]);
 
     // Get all the path lengths for all the drain nodes and add the path to the list of edges
     for (int32_t drain_node_idx = 1; drain_node_idx < num_nodes_in_edge; drain_node_idx++) {
-      drain_part = mt_kahypar_block_id(partitioned_hypergraph, pin_buffer[drain_node_idx]);
+      mt_kahypar_partition_id_t drain_part = mt_kahypar_block_id(partitioned_hypergraph, pin_buffer[drain_node_idx]);
 
       // We only care about signals that actually cross partitions, so skip same partition signals
       if (drain_part == source_part)
         continue;
 
-      edge_path_length = (fpga_path_lengths[source_part][drain_part]);
+      int32_t edge_path_length = (fpga_path_lengths[source_part][drain_part]);
       edge_paths.push_back({.length = edge_path_length, .source_part = source_part, .drain_part = drain_part});
       max_edge_path_length = std::max(max_edge_path_length, edge_path_length);
     }
@@ -121,8 +102,8 @@ void router::route() {
     std::vector<int32_t> edge_path = route_path(source, drain, effort);
 
     // Add the path to the FPGA graph, while updating the route graph
-    for (int32_t i = 0; i < edge_path.size()-1; i++) {
-      fpga_route_graph[edge_path[i]][edge_path[i+1]] += 1;
+    for (int32_t path_node = 0; path_node < edge_path.size()-1; path_node++) {
+      fpga_route_graph[edge_path[path_node]][edge_path[path_node+1]] += 1;
     }
 
     // Add it to the list of edge paths for later metrics calculation
@@ -141,8 +122,8 @@ void router::route() {
   for (const auto& edge_path : edge_node_paths) {
     // Traverse the path, getting all the delays and adding them up
     int32_t delay = 0;
-    for (int32_t i = 0; i < edge_path.size()-1; i++) {
-      delay += fpga_route_graph[edge_path[i]][edge_path[i+1]] + fpga_route_graph[edge_path[i+1]][edge_path[i]];
+    for (int32_t path_node = 0; path_node < edge_path.size()-1; path_node++) {
+      delay += fpga_route_graph[edge_path[path_node]][edge_path[path_node+1]] + fpga_route_graph[edge_path[path_node+1]][edge_path[path_node]];
     }
     if (delay > max_delay) {
       max_delay = delay;
