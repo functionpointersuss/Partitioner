@@ -4,17 +4,28 @@
 int main(int argc, char* argv[]) {
   mt_kahypar_error_t error{};
 
+  // Create FPGA Graph
+  // Example: Basic 2D mesh connection of 4 fpgas
+  std::vector<std::vector<int32_t>> fpga_graph = {
+    { 0,  1,  1, -1},
+    { 1,  0, -1,  1},
+    { 1, -1,  0,  1},
+    {-1,  1,  1,  0}
+  };
+  int32_t num_fpgas = fpga_graph.size();
+
   // Initialize
   mt_kahypar_initialize(
     std::thread::hardware_concurrency() /* use all available cores */,
     true /* activate interleaved NUMA allocation policy */ );
+
 
   // Setup partitioning context
   mt_kahypar_context_t* context = mt_kahypar_context_from_preset(DEFAULT);
   // In the following, we partition a hypergraph into two blocks
   // with an allowed imbalance of 3% and optimize the connective metric (KM1)
   mt_kahypar_set_partitioning_parameters(context,
-    2 /* number of blocks */, 0.03 /* imbalance parameter */,
+    num_fpgas /* number of blocks */, 0.10 /* imbalance parameter */,
     KM1 /* objective function */);
   mt_kahypar_set_seed(42 /* seed */);
   // Enable logging
@@ -24,7 +35,7 @@ int main(int argc, char* argv[]) {
 
   // Load Hypergraph for DEFAULT preset
   mt_kahypar_hypergraph_t hypergraph =
-    mt_kahypar_read_hypergraph_from_file("ibm01.hgr",
+    mt_kahypar_read_hypergraph_from_file("basic.hgr",
       context, HMETIS /* file format */, &error);
   if (hypergraph.hypergraph == nullptr) {
     std::cout << error.msg << std::endl; std::exit(1);
@@ -38,6 +49,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Route Hypergraph
+  router router(num_fpgas, fpga_graph, hypergraph, partitioned_hg);
+  router.route();
 
   mt_kahypar_free_context(context);
   mt_kahypar_free_hypergraph(hypergraph);

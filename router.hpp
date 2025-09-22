@@ -27,6 +27,6 @@ private:
 
 typedef struct edge_path {
   int32_t length;
-  mt_kahypar_hypernode_id_t source;
-  mt_kahypar_hypernode_id_t drain;
+  mt_kahypar_partition_id_t source_part;
+  mt_kahypar_partition_id_t drain_part;
 } edge_path_t;

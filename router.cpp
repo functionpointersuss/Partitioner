@@ -16,7 +16,7 @@ void router::route() {
   // Initialize fpga_hop_counts from the graph
   for (int32_t row = 0; row < num_fpgas; row++)
     for (int32_t col = 0; col < num_fpgas; col++)
-      fpga_hop_counts[row][col] = (fpga_graph[row][col] != -1) ? 1 : 0;
+      fpga_hop_counts[row][col] = (fpga_graph[row][col] > 0) ? 1 : fpga_graph[row][col];
 
   // Run Floyd Warshall on the graph to get all the paths
   // TODO: Can be implemented with BFS
@@ -25,7 +25,10 @@ void router::route() {
       for (int32_t k = 0; k < num_fpgas; k++) {
         // Disconnected edges are represented by -1
         if (fpga_hop_counts[i][k] != -1 && fpga_hop_counts[k][j] != -1) {
-          fpga_hop_counts[i][j] = std::min(fpga_hop_counts[i][j], fpga_hop_counts[i][k] + fpga_hop_counts[k][j]);
+          if (fpga_hop_counts[i][j] == -1)
+            fpga_hop_counts[i][j] = fpga_hop_counts[i][k] + fpga_hop_counts[k][j];
+          else
+            fpga_hop_counts[i][j] = std::min(fpga_hop_counts[i][j], fpga_hop_counts[i][k] + fpga_hop_counts[k][j]);
         }
       }
     }
@@ -52,7 +55,10 @@ void router::route() {
       for (int32_t k = 0; k < num_fpgas; k++) {
         // Disconnected edges are represented by -1
         if (fpga_path_lengths[i][k] != -1 && fpga_path_lengths[k][j] != -1) {
-          fpga_path_lengths[i][j] = std::min(fpga_path_lengths[i][j], fpga_path_lengths[i][k] + fpga_path_lengths[k][j]);
+          if (fpga_path_lengths[i][j] == -1)
+            fpga_path_lengths[i][j] = fpga_path_lengths[i][k] + fpga_path_lengths[k][j];
+          else
+            fpga_path_lengths[i][j] = std::min(fpga_path_lengths[i][j], fpga_path_lengths[i][k] + fpga_path_lengths[k][j]);
         }
       }
     }
@@ -65,8 +71,8 @@ void router::route() {
   std::vector<edge_path_t> edge_paths;
   int32_t edge_path_length;
   int32_t max_edge_path_length = 0;
-  int32_t source_part;
-  int32_t drain_part;
+  mt_kahypar_partition_id_t source_part;
+  mt_kahypar_partition_id_t drain_part;
   mt_kahypar_hypernode_id_t num_nodes_in_edge;
   // Run through all edges to get path lengths and max page length
   for (int32_t edge = 0; edge < mt_kahypar_num_hyperedges(hypergraph); edge++) {
@@ -85,27 +91,32 @@ void router::route() {
         continue;
 
       edge_path_length = (fpga_path_lengths[source_part][drain_part]);
-      edge_paths.push_back({.length = edge_path_length, .source = pin_buffer[0], .drain = pin_buffer[drain_node_idx]});
+      edge_paths.push_back({.length = edge_path_length, .source_part = source_part, .drain_part = drain_part});
       max_edge_path_length = std::max(max_edge_path_length, edge_path_length);
     }
     free(pin_buffer);
   }
 
   // Run through all edges to get effort and add it to the edge list with the source and drain indices
-  std::map<int32_t, std::pair<mt_kahypar_hypernode_id_t, mt_kahypar_hypernode_id_t>, std::greater<int32_t>> edge_path_efforts;
+  std::vector<std::tuple<int32_t, mt_kahypar_partition_id_t, mt_kahypar_partition_id_t>> edge_path_efforts;
   for (auto edge_path : edge_paths) {
-    edge_path_efforts[((edge_path.length * max_hop_count) + max_edge_path_length - 1) / max_edge_path_length] = {edge_path.source, edge_path.drain};
+    int32_t effort = ((edge_path.length * max_hop_count) + max_edge_path_length - 1) / max_edge_path_length;
+
+    edge_path_efforts.push_back({effort, edge_path.source_part, edge_path.drain_part});
   }
+  std::sort(edge_path_efforts.begin(), edge_path_efforts.end(), [](const std::tuple<int32_t, mt_kahypar_partition_id_t, mt_kahypar_partition_id_t>& a,
+                                                                   const std::tuple<int32_t, mt_kahypar_partition_id_t, mt_kahypar_partition_id_t>& b) {
+    return std::get<0>(a) > std::get<0>(b);
+  });
 
   //----------------
   // Initial Routing
   //----------------
   std::vector<std::vector<int32_t>> edge_node_paths;
-  for (const auto& pair : edge_path_efforts) {
-    int32_t effort = pair.first;
-    std::pair<mt_kahypar_hypernode_id_t, mt_kahypar_hypernode_id_t> edge = pair.second;
-    int32_t source = edge.first;
-    int32_t drain  = edge.second;
+  for (const auto& edge_path_effort : edge_path_efforts) {
+    int32_t effort = std::get<0>(edge_path_effort);
+    int32_t source = std::get<1>(edge_path_effort);
+    int32_t drain  = std::get<2>(edge_path_effort);
 
     std::vector<int32_t> edge_path = route_path(source, drain, effort);
 
@@ -126,15 +137,23 @@ void router::route() {
   // Performance Metrics
   //--------------------
   int32_t max_delay = 0;
+  std::vector<int32_t> max_path;
   for (const auto& edge_path : edge_node_paths) {
     // Traverse the path, getting all the delays and adding them up
-    int32_t delay;
+    int32_t delay = 0;
     for (int32_t i = 0; i < edge_path.size()-1; i++) {
-      delay += fpga_route_graph[edge_path[i]][edge_path[i+1]];
+      delay += fpga_route_graph[edge_path[i]][edge_path[i+1]] + fpga_route_graph[edge_path[i+1]][edge_path[i]];
     }
-    max_delay = std::max(delay, max_delay);
+    if (delay > max_delay) {
+      max_delay = delay;
+      max_path  = edge_path;
+    }
   }
   std::cout << "Max Delay for this system: " << max_delay << std::endl;
+  std::cout << "Max Path for this system: ";
+  for (const auto& path : max_path)
+   std::cout << path << " ";
+  std::cout << std::endl;
   return;
 }
 
