@@ -1,18 +1,14 @@
 #include "partitioner.hpp"
-// Install library interface via 'sudo make install.mtkahypar' in build folder
-// Compile with: g++ -std=c++14 -DNDEBUG -O3 partition_hypergraph.cc -o example -lmtkahypar
-int main(int argc, char* argv[]) {
+
+void partition(const std::string &fpga_graph_file, char* netlist_graph_file) {
   mt_kahypar_error_t error{};
 
   // Create FPGA Graph
-  // Example: Basic 2D mesh connection of 4 fpgas
-  std::vector<std::vector<int32_t>> fpga_graph = {
-    { 0,  1,  1, -1},
-    { 1,  0, -1,  1},
-    { 1, -1,  0,  1},
-    {-1,  1,  1,  0}
-  };
+  std::vector<std::vector<int32_t>> fpga_graph = fpga_graph_from_file(fpga_graph_file);
   int32_t num_fpgas = fpga_graph.size();
+
+  std::cout << num_fpgas << std::endl;
+  std::cout << netlist_graph_file << std::endl;
 
   // Initialize
   mt_kahypar_initialize(
@@ -49,7 +45,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Route Hypergraph
-  router router(num_fpgas, fpga_graph, hypergraph, partitioned_hg);
+  router router(fpga_graph, hypergraph, partitioned_hg);
   router.route();
 
   mt_kahypar_free_context(context);
@@ -57,3 +53,50 @@ int main(int argc, char* argv[]) {
   mt_kahypar_free_partitioned_hypergraph(partitioned_hg);
 }
 
+std::vector<std::vector<int32_t>> fpga_graph_from_file(const std::string &filename) {
+    std::ifstream infile(filename);
+    if (!infile.is_open()) {
+        throw std::runtime_error("Error opening file: " + filename);
+    }
+
+    int32_t numNodes, numEdges;
+    infile >> numNodes >> numEdges;
+    infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // move to next line
+
+    // Initialize adjacency matrix with -1 (no edge)
+    std::vector<std::vector<int32_t>> adj(numNodes, std::vector<int32_t>(numNodes, -1));
+
+    int32_t edgeCount = 0;
+    std::string line;
+    for (int32_t u = 0; u < numNodes; ++u) {
+        if (!std::getline(infile, line)) {
+            throw std::runtime_error("Unexpected end of file while reading adjacency list");
+        }
+
+        std::istringstream iss(line);
+        int32_t neighbor, weight;
+        while (iss >> neighbor >> weight) {
+            if (neighbor < 0 || neighbor >= numNodes) {
+                throw std::runtime_error("Neighbor index out of range in file");
+            }
+            adj[u][neighbor] = weight;
+            ++edgeCount;
+        }
+    }
+
+    // Validate edge count
+    if (edgeCount != numEdges) {
+        throw std::runtime_error(
+            "Edge count mismatch: expected " + std::to_string(numEdges) +
+            ", but found " + std::to_string(edgeCount)
+        );
+    }
+
+    // All FPGAs are connected to themselves with a distance of 0
+    // thus the diagonal of the matrix is all 0
+    for (int32_t diag = 0; diag < adj.size(); diag++) {
+      adj[diag][diag] = 0;
+    }
+
+    return adj;
+}

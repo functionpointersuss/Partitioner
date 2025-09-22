@@ -11,13 +11,13 @@
 
 class router {
 public:
-  router(int32_t num_fpgas, std::vector<std::vector<int32_t>> fpga_graph,
+  router(std::vector<std::vector<int32_t>> fpga_graph,
          mt_kahypar_hypergraph_t& hypergraph, mt_kahypar_partitioned_hypergraph_t& partitioned_hypergraph);
   void route();
 
 private:
-  const int num_fpgas;
-  const std::vector<std::vector<int32_t>> fpga_graph;
+  int num_fpgas;
+  std::vector<std::vector<int32_t>> fpga_graph;
   std::vector<std::vector<int32_t>> fpga_route_graph;
   mt_kahypar_hypergraph_t& hypergraph;
   mt_kahypar_partitioned_hypergraph_t& partitioned_hypergraph;

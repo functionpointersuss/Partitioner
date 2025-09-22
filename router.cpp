@@ -1,13 +1,12 @@
 #include "router.hpp"
 
-router::router(int32_t num_fpgas, std::vector<std::vector<int32_t>> fpga_graph,
+router::router(std::vector<std::vector<int32_t>> fpga_graph,
                mt_kahypar_hypergraph_t& hypergraph, mt_kahypar_partitioned_hypergraph_t& partitioned_hypergraph)
              : num_fpgas(fpga_graph.size()), fpga_graph(fpga_graph), fpga_route_graph(fpga_graph),
                hypergraph(hypergraph), partitioned_hypergraph(partitioned_hypergraph) {}
 
 // Calculates route effort
 void router::route() {
-
   // -------------------------
   // FPGA Graph Floyd Warshall
   // -------------------------
@@ -52,7 +51,9 @@ void router::route() {
   // --------------------
   // Edge list processing
   // --------------------
-
+  // This part of the code goes through every single edge in the hypergraph and calculates their path length
+  // This is used to calculate maximum path length, and therefore the effort of each path
+  // The output of this function is a vector of edge tuples (effort, source partition, drain partition)
   std::vector<edge_path_t> edge_paths;
   int32_t max_edge_path_length = 0;
   // Run through all edges to get path lengths and max page length
