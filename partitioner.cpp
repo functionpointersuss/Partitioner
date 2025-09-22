@@ -31,7 +31,7 @@ void partition(const std::string &fpga_graph_file, char* netlist_graph_file) {
 
   // Load Hypergraph for DEFAULT preset
   mt_kahypar_hypergraph_t hypergraph =
-    mt_kahypar_read_hypergraph_from_file("basic.hgr",
+    mt_kahypar_read_hypergraph_from_file(netlist_graph_file,
       context, HMETIS /* file format */, &error);
   if (hypergraph.hypergraph == nullptr) {
     std::cout << error.msg << std::endl; std::exit(1);
