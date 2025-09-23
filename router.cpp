@@ -1,8 +1,8 @@
 #include "router.hpp"
 
-router::router(std::vector<std::vector<int32_t>> fpga_graph,
+router::router(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::vector<int32_t>> fpga_band_graph,
                mt_kahypar_hypergraph_t& hypergraph, mt_kahypar_partitioned_hypergraph_t& partitioned_hypergraph)
-             : num_fpgas(fpga_graph.size()), fpga_graph(fpga_graph), fpga_route_graph(fpga_graph),
+             : num_fpgas(fpga_delay_graph.size()), fpga_graph(fpga_delay_graph), fpga_route_graph(fpga_delay_graph), fpga_band_graph(fpga_band_graph),
                hypergraph(hypergraph), partitioned_hypergraph(partitioned_hypergraph) {}
 
 // Calculates route effort
@@ -124,7 +124,8 @@ void router::route() {
     // Traverse the path, getting all the delays and adding them up
     int32_t delay = 0;
     for (int32_t path_node = 0; path_node < edge_path.size()-1; path_node++) {
-      delay += fpga_route_graph[edge_path[path_node]][edge_path[path_node+1]] + fpga_route_graph[edge_path[path_node+1]][edge_path[path_node]];
+      delay += (fpga_route_graph[edge_path[path_node]][edge_path[path_node+1]] + fpga_route_graph[edge_path[path_node+1]][edge_path[path_node]]
+             - fpga_graph[edge_path[path_node]][edge_path[path_node+1]]) / (fpga_band_graph[edge_path[path_node]][edge_path[path_node+1]]);
     }
     if (delay > max_delay) {
       max_delay = delay;

@@ -4,8 +4,9 @@ void partition(const std::string &fpga_graph_file, char* netlist_graph_file) {
   mt_kahypar_error_t error{};
 
   // Create FPGA Graph
-  std::vector<std::vector<int32_t>> fpga_graph = fpga_graph_from_file(fpga_graph_file);
-  int32_t num_fpgas = fpga_graph.size();
+  auto [fpga_delay_graph, fpga_band_graph] = fpga_graph_from_file(fpga_graph_file);
+
+  int32_t num_fpgas = fpga_delay_graph.size();
 
   std::cout << num_fpgas << std::endl;
   std::cout << netlist_graph_file << std::endl;
@@ -45,7 +46,7 @@ void partition(const std::string &fpga_graph_file, char* netlist_graph_file) {
   }
 
   // Route Hypergraph
-  router router(fpga_graph, hypergraph, partitioned_hg);
+  router router(fpga_delay_graph, fpga_band_graph, hypergraph, partitioned_hg);
   router.route();
 
   mt_kahypar_free_context(context);
@@ -53,7 +54,7 @@ void partition(const std::string &fpga_graph_file, char* netlist_graph_file) {
   mt_kahypar_free_partitioned_hypergraph(partitioned_hg);
 }
 
-std::vector<std::vector<int32_t>> fpga_graph_from_file(const std::string &filename) {
+std::pair<std::vector<std::vector<int32_t>>, std::vector<std::vector<int32_t>>> fpga_graph_from_file(const std::string &filename) {
     std::ifstream infile(filename);
     if (!infile.is_open()) {
         throw std::runtime_error("Error opening file: " + filename);
@@ -64,7 +65,8 @@ std::vector<std::vector<int32_t>> fpga_graph_from_file(const std::string &filena
     infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // move to next line
 
     // Initialize adjacency matrix with -1 (no edge)
-    std::vector<std::vector<int32_t>> adj(numNodes, std::vector<int32_t>(numNodes, -1));
+    std::vector<std::vector<int32_t>> delay_adj(numNodes, std::vector<int32_t>(numNodes, -1));
+    std::vector<std::vector<int32_t>> band_adj(numNodes, std::vector<int32_t>(numNodes, -1));
 
     int32_t edgeCount = 0;
     std::string line;
@@ -74,12 +76,13 @@ std::vector<std::vector<int32_t>> fpga_graph_from_file(const std::string &filena
         }
 
         std::istringstream iss(line);
-        int32_t neighbor, weight;
-        while (iss >> neighbor >> weight) {
+        int32_t neighbor, bandwidth, delay;
+        while (iss >> neighbor >> bandwidth >> delay) {
             if (neighbor < 0 || neighbor >= numNodes) {
                 throw std::runtime_error("Neighbor index out of range in file");
             }
-            adj[u][neighbor] = weight;
+            delay_adj[u][neighbor] = delay;
+            band_adj[u][neighbor] = bandwidth;
             ++edgeCount;
         }
     }
@@ -92,11 +95,12 @@ std::vector<std::vector<int32_t>> fpga_graph_from_file(const std::string &filena
         );
     }
 
-    // All FPGAs are connected to themselves with a distance of 0
+    // All FPGAs are connected to themselves with a distance of 0, and a bandwidth of 1 since we don't really care
     // thus the diagonal of the matrix is all 0
-    for (int32_t diag = 0; diag < adj.size(); diag++) {
-      adj[diag][diag] = 0;
+    for (int32_t diag = 0; diag < delay_adj.size(); diag++) {
+      delay_adj[diag][diag] = 0;
+      band_adj[diag][diag] = 1;
     }
 
-    return adj;
+    return std::make_pair(delay_adj, band_adj);
 }
