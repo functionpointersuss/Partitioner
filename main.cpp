@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include "partitioner.hpp"
+#include "mtkahypar.hpp"
 #include "router.hpp"
 #include "fpgagraph.hpp"
 #include "hypergraph.hpp"

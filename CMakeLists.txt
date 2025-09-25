@@ -8,7 +8,7 @@ if(MtKaHyPar_FOUND)
   add_executable(partitioner main.cpp partitioner.cpp router.cpp)
   target_link_libraries(partitioner MtKaHyPar::mtkahypar)
 
-  add_executable(fpga_graph_test tests/fpga_graph_test.cpp partitioner.cpp router.cpp)
+  add_executable(fpga_graph_test tests/fpga_graph_test.cpp mtkahypar.cpp router.cpp)
   target_link_libraries(fpga_graph_test MtKaHyPar::mtkahypar)
 
   enable_testing()
