@@ -11,5 +11,5 @@
 
 #include "router.hpp"
 
-void partition(const std::string &fpga_graph_file, char* netlist_graph_file);
-std::pair<std::vector<std::vector<int32_t>>, std::vector<std::vector<int32_t>>> fpga_graph_from_file(const std::string &filename);
+void partition(const std::string &fpga_graph_file, char* netlist_graph_file, const int32_t fpga_size);
+std::pair<std::vector<std::vector<int32_t>>, std::vector<std::vector<int32_t>>> fpga_graph_from_file(const std::string &filename, const int32_t fpga_size);

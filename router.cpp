@@ -101,6 +101,9 @@ void router::route() {
     int32_t drain  = std::get<2>(edge_path_effort);
 
     std::vector<int32_t> edge_path = route_path(source, drain, effort);
+    if (edge_path.size() < 2) {
+      std::cout << "Illegal Path Size " << edge_path.size() << std::endl;
+    }
 
     // Add the path to the FPGA graph, while updating the route graph
     for (int32_t path_node = 0; path_node < edge_path.size()-1; path_node++) {

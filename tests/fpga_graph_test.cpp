@@ -11,7 +11,7 @@ int main() {
     {-1,  1,  1,  0}
   };
 
-  auto[fpga_delay_graph_act, fpga_band_graph_act] = fpga_graph_from_file("../tests/basic_fpga.gr");
+  auto[fpga_delay_graph_act, fpga_band_graph_act] = fpga_graph_from_file("../tests/basic_fpga.gr", 10);
   for (int i = 0; i < fpga_delay_graph_act.size(); i++) {
     if (i >= fpga_graph_exp.size()) {
       std::cout << "Actual Graph has too many rows\n";
