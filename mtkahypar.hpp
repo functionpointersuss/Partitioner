@@ -8,4 +8,4 @@
 
 #include "hypergraph.hpp"
 
-void partition(const std::string &fpga_graph_file, char* netlist_graph_file, const int32_t fpga_size);
+std::vector<hypergraph_edge_t> partition(char* netlist_graph_file, const int32_t fpga_size, int32_t& num_fpgas);

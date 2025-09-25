@@ -2,9 +2,10 @@
 
 // Calculates route effort
 void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::vector<int32_t>> fpga_band_graph, std::vector<std::vector<int32_t>> fpga_hop_graph,
-                   std::vector<hyper_graph_edge_t> edge_partition_list) {
+                   std::vector<hypergraph_edge_t> edge_partition_list) {
 
   int32_t num_fpgas = fpga_delay_graph.size();
+  std::vector<std::vector<int32_t>> fpga_orig_graph = fpga_delay_graph;
 
 
   // Generate LUTs for the FPGA Graph
@@ -20,7 +21,7 @@ void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::
   // --------------------
   // Edge list processing
   // --------------------
-  std::vector<routable_edges_t> routable_edge_list;
+  std::vector<routable_edge_t> routable_edge_list;
   int32_t max_edge_node_dist = 0;
   int32_t edge_node_dist = 0;
   uint64_t source_part, drain_part;
@@ -36,8 +37,8 @@ void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::
         continue;
 
       int32_t edge_node_dist = (fpga_node_dists[source_part][drain_part]);
-      routable_edge_list.push_back({.dist = edge_node_distance, .source = source_part, .drain = drain_part, .effort = 0});
-      max_edge_node_dist = std::max(max_edge_path_length, edge_path_length);
+      routable_edge_list.push_back({.dist = edge_node_dist, .effort = 0, .source = source_part, .drain = drain_part});
+      max_edge_node_dist = std::max(max_edge_node_dist, edge_node_dist);
     }
   }
 
@@ -46,7 +47,7 @@ void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::
     routable_edge.effort = ((routable_edge.dist * max_hop_count) + max_edge_node_dist - 1) / max_edge_node_dist;
   }
   // Sort the list of routable edges based on highest effort being first
-  std::sort(routable_edge_list.begin(), routable_edge_list.end(), [](const routable_edge& a, const routable_edge& b) {
+  std::sort(routable_edge_list.begin(), routable_edge_list.end(), [](const routable_edge_t& a, const routable_edge_t& b) {
     return a.effort > b.effort;
   });
 
@@ -86,7 +87,7 @@ void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::
     int32_t delay = 0;
     for (int32_t path_node = 0; path_node < edge_path.size()-1; path_node++) {
       delay += (fpga_delay_graph[edge_path[path_node]][edge_path[path_node+1]] + fpga_delay_graph[edge_path[path_node+1]][edge_path[path_node]]
-             - fpga_graph[edge_path[path_node]][edge_path[path_node+1]]) / (fpga_band_graph[edge_path[path_node]][edge_path[path_node+1]]);
+             - fpga_orig_graph[edge_path[path_node]][edge_path[path_node+1]]) / (fpga_band_graph[edge_path[path_node]][edge_path[path_node+1]]);
     }
     if (delay > max_delay) {
       max_delay = delay;
@@ -100,7 +101,7 @@ void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::
   std::cout << std::endl;
 
   std::cout << "Max Path Delay for this system: ";
-  for (int32_t max_path_node = 0; max_path_node < max_edge_path.size()-1; max_path_node++) {
+  for (int32_t max_path_node = 0; max_path_node < max_path.size()-1; max_path_node++) {
     std::cout << fpga_delay_graph[max_path[max_path_node]][max_path[max_path_node+1]] + fpga_delay_graph[max_path[max_path_node+1]][max_path[max_path_node]] << " ";
   }
   std::cout << std::endl;
@@ -108,7 +109,7 @@ void route(std::vector<std::vector<int32_t>> fpga_delay_graph, std::vector<std::
 }
 
 
-std::pair<std::vector<<std::vector<int32_t>>, std::vector<<std::vector<int32_t>>> create_fpga_graph_luts (int32_t num_fpgas,
+std::pair<std::vector<std::vector<int32_t>>, std::vector<std::vector<int32_t>>> create_fpga_graph_luts (int32_t num_fpgas,
                                                                                                           std::vector<std::vector<int32_t>> fpga_delay_graph,
                                                                                                           std::vector<std::vector<int32_t>> fpga_hop_graph) {
   // -------------------------
@@ -165,7 +166,7 @@ std::vector<int32_t> route_path(const std::vector<std::vector<int32_t>>& fpga_de
       if (hops >= maximum_hop_count) continue; // Cannot expand further
 
       for (int32_t v = 0; v < num_fpgas; v++) {
-        int32_t weight = graph[u * num_fpgas + v];
+        int32_t weight = fpga_delay_graph[u][v];
         if (weight > 0) { // Assuming 0 = no edge
           if (dist[u] + weight < dist[v]) {
             dist[v] = dist[u] + weight;

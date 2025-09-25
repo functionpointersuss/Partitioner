@@ -1,6 +1,6 @@
-#include "partitioner.hpp"
+#include "mtkahypar.hpp"
 
-std::vector< partition(const std::string &fpga_graph_file, char* netlist_graph_file, const int32_t num_fpgas) {
+std::vector<hypergraph_edge_t> partition( char* netlist_graph_file, const int32_t fpga_size, int32_t& num_fpgas) {
   mt_kahypar_error_t error{};
 
   // Initialize
@@ -27,9 +27,16 @@ std::vector< partition(const std::string &fpga_graph_file, char* netlist_graph_f
     std::cout << error.msg << std::endl; std::exit(1);
   }
 
+  int32_t num_gates = mt_kahypar_num_hyperedges(hypergraph);
+  num_fpgas = (num_gates+fpga_size-1)/fpga_size;
+
   mt_kahypar_set_partitioning_parameters(context,
     num_fpgas /* number of blocks */, 0.10 /* imbalance parameter */,
     KM1 /* objective function */);
+
+  std::cout << "Design Size: " << num_gates << '\n';
+  std::cout << "FPGA Size: " << fpga_size << '\n';
+  std::cout << "Num FPGAs Used : " << num_fpgas << '\n';
 
   // Partition Hypergraph
   mt_kahypar_partitioned_hypergraph_t partitioned_hg =
@@ -48,9 +55,11 @@ std::vector< partition(const std::string &fpga_graph_file, char* netlist_graph_f
     mt_kahypar_partition_id_t source_part;
 
     mt_kahypar_get_hyperedge_pins(hypergraph, edge, pin_buffer);
-    source_part = mt_kahypar_block_id(partitioned_hypergraph, pin_buffer[0]);
+    source_part = mt_kahypar_block_id(partitioned_hg, pin_buffer[0]);
 
-    drain_partitions.insert(edge_partitions.end(), pin_buffer+1, pin_buffer+num_nodes_in_edge);
+    for (int i = 0; i < num_nodes_in_edge; i++)
+      drain_partitions.push_back(pin_buffer[i]);
+
     edge_partitions.push_back({.source = source_part, .drains = std::move(drain_partitions)});
   }
 

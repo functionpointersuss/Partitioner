@@ -26,20 +26,13 @@ int main (int argc, char *argv[]) {
   }
 
   // Only partition to a subset of FPGAs, based on the design size
-  int num_gates = mt_kahypar_num_hyperedges(hypergraph);
-  int num_fpgas = (num_gates+fpga_size-1) / fpga_size;
+  int num_fpgas;
 
-  std::cout << "Design Size: " << num_gates << '\n';
-  std::cout << "FPGA Size: " << fpga_size << '\n';
-  std::cout << "Num FPGAs Used : " << num_fpgas << '\n';
-
-  std::cout << num_fpgas << std::endl;
-  std::cout << netlist_graph_file << std::endl;
+  std::vector<hypergraph_edge_t> edge_partition_list = partition(netlist_graph_file, fpga_size, num_fpgas);
 
   // Create FPGA Graph
   auto [fpga_delay_graph, fpga_band_graph, fpga_hop_graph] = fpga_graph_from_file(fpga_graph_file, num_fpgas);
 
-  partition(fpga_graph_file, netlist_graph_file, fpga_size);
 
 
   // Route Hypergraph
@@ -47,10 +40,7 @@ int main (int argc, char *argv[]) {
   std::cout << "*                             System Routing...                                *\n";
   std::cout << "********************************************************************************\n";
 
-  router(fpga_delay_graph, fpga_band_graph, hypergraph, partitioned_hg);
-  router.route();
-
-
+  route(fpga_delay_graph, fpga_band_graph, fpga_hop_graph, edge_partition_list);
 
   return 0;
 }
